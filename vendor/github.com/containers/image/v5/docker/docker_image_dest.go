@@ -212,6 +212,9 @@ func (d *dockerImageDestination) PutBlob(ctx context.Context, stream io.Reader, 
 // If the destination does not contain the blob, or it is unknown, blobExists ordinarily returns (false, -1, nil);
 // it returns a non-nil error only on an unexpected failure.
 func (d *dockerImageDestination) blobExists(ctx context.Context, repo reference.Named, digest digest.Digest, extraScope *authScope) (bool, int64, error) {
+	if err := digest.Validate(); err != nil { // Make sure digest.String() does not contain any unexpected characters
+		return false, -1, err
+	}
 	checkPath := fmt.Sprintf(blobsPath, reference.Path(repo), digest.String())
 	logrus.Debugf("Checking %s", checkPath)
 	res, err := d.c.makeRequest(ctx, "HEAD", checkPath, nil, nil, v2Auth, extraScope)
@@ -373,6 +376,7 @@ func (d *dockerImageDestination) PutManifest(ctx context.Context, m []byte, inst
 		// particular instance.
 		refTail = instanceDigest.String()
 		// Double-check that the manifest we've been given matches the digest we've been given.
+		// This also validates the format of instanceDigest.
 		matches, err := manifest.MatchesDigest(m, *instanceDigest)
 		if err != nil {
 			return errors.Wrapf(err, "error digesting manifest in PutManifest")
@@ -501,12 +505,14 @@ func (d *dockerImageDestination) putSignaturesToLookaside(signatures [][]byte, m
 
 	// NOTE: Keep this in sync with docs/signature-protocols.md!
 	for i, signature := range signatures {
-		url := signatureStorageURL(d.c.signatureBase, manifestDigest, i)
+		url, err := signatureStorageURL(d.c.signatureBase, manifestDigest, i)
+		if err != nil {
+			return err
+		}
 		if url == nil {
 			return errors.Errorf("Internal error: signatureStorageURL with non-nil base returned nil")
 		}
-		err := d.putOneSignature(url, signature)
-		if err != nil {
+		if err := d.putOneSignature(url, signature); err != nil {
 			return err
 		}
 	}
@@ -516,7 +522,10 @@ func (d *dockerImageDestination) putSignaturesToLookaside(signatures [][]byte, m
 	// is enough for dockerImageSource to stop looking for other signatures, so that
 	// is sufficient.
 	for i := len(signatures); ; i++ {
-		url := signatureStorageURL(d.c.signatureBase, manifestDigest, i)
+		url, err := signatureStorageURL(d.c.signatureBase, manifestDigest, i)
+		if err != nil {
+			return err
+		}
 		if url == nil {
 			return errors.Errorf("Internal error: signatureStorageURL with non-nil base returned nil")
 		}
@@ -628,6 +637,7 @@ sigExists:
 			return err
 		}
 
+		// manifestDigest is known to be valid because it was not rejected by getExtensionsSignatures above.
 		path := fmt.Sprintf(extensionsSignaturePath, reference.Path(d.ref.ref), manifestDigest.String())
 		res, err := d.c.makeRequest(ctx, "PUT", path, nil, bytes.NewReader(body), v2Auth, nil)
 		if err != nil {

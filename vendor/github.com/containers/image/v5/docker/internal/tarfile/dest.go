@@ -143,11 +143,19 @@ func (d *Destination) PutBlob(ctx context.Context, stream io.Reader, inputInfo t
 			return types.BlobInfo{}, errors.Wrap(err, "Error reading Config file stream")
 		}
 		d.config = buf
-		if err := d.archive.sendFileLocked(d.archive.configPath(inputInfo.Digest), inputInfo.Size, bytes.NewReader(buf)); err != nil {
+		configPath, err := d.archive.configPath(inputInfo.Digest)
+		if err != nil {
+			return types.BlobInfo{}, err
+		}
+		if err := d.archive.sendFileLocked(configPath, inputInfo.Size, bytes.NewReader(buf)); err != nil {
 			return types.BlobInfo{}, errors.Wrap(err, "Error writing Config file")
 		}
 	} else {
-		if err := d.archive.sendFileLocked(d.archive.physicalLayerPath(inputInfo.Digest), inputInfo.Size, stream); err != nil {
+		layerPath, err := d.archive.physicalLayerPath(inputInfo.Digest)
+		if err != nil {
+			return types.BlobInfo{}, err
+		}
+		if err := d.archive.sendFileLocked(layerPath, inputInfo.Size, stream); err != nil {
 			return types.BlobInfo{}, err
 		}
 	}

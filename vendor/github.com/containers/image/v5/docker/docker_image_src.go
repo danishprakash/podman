@@ -171,6 +171,9 @@ func simplifyContentType(contentType string) string {
 // this never happens if the primary manifest is not a manifest list (e.g. if the source never returns manifest lists).
 func (s *dockerImageSource) GetManifest(ctx context.Context, instanceDigest *digest.Digest) ([]byte, string, error) {
 	if instanceDigest != nil {
+		if err := instanceDigest.Validate(); err != nil { // Make sure instanceDigest.String() does not contain any unexpected characters
+			return nil, "", err
+		}
 		return s.fetchManifest(ctx, instanceDigest.String())
 	}
 	err := s.ensureManifestIsLoaded(ctx)
@@ -275,6 +278,9 @@ func (s *dockerImageSource) GetBlob(ctx context.Context, info types.BlobInfo, ca
 		return s.getExternalBlob(ctx, info.URLs)
 	}
 
+	if err := info.Digest.Validate(); err != nil { // Make sure info.Digest.String() does not contain any unexpected characters
+		return nil, 0, err
+	}
 	path := fmt.Sprintf(blobsPath, reference.Path(s.physicalRef.ref), info.Digest.String())
 	logrus.Debugf("Downloading %s", path)
 	res, err := s.c.makeRequest(ctx, "GET", path, nil, nil, v2Auth, nil)
@@ -335,7 +341,10 @@ func (s *dockerImageSource) getSignaturesFromLookaside(ctx context.Context, inst
 	// NOTE: Keep this in sync with docs/signature-protocols.md!
 	signatures := [][]byte{}
 	for i := 0; ; i++ {
-		url := signatureStorageURL(s.c.signatureBase, manifestDigest, i)
+		url, err := signatureStorageURL(s.c.signatureBase, manifestDigest, i)
+		if err != nil {
+			return err
+		}
 		if url == nil {
 			return nil, errors.Errorf("Internal error: signatureStorageURL with non-nil base returned nil")
 		}
@@ -481,7 +490,10 @@ func deleteImage(ctx context.Context, sys *types.SystemContext, ref dockerRefere
 		}
 
 		for i := 0; ; i++ {
-			url := signatureStorageURL(c.signatureBase, manifestDigest, i)
+			url, err := signatureStorageURL(c.signatureBase, manifestDigest, i)
+			if err != nil {
+				return err
+			}
 			if url == nil {
 				return errors.Errorf("Internal error: signatureStorageURL with non-nil base returned nil")
 			}

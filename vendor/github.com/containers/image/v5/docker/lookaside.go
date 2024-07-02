@@ -199,11 +199,14 @@ func (ns registryNamespace) signatureTopLevel(write bool) string {
 // signatureStorageURL returns an URL usable for acessing signature index in base with known manifestDigest, or nil if not applicable.
 // Returns nil iff base == nil.
 // NOTE: Keep this in sync with docs/signature-protocols.md!
-func signatureStorageURL(base signatureStorageBase, manifestDigest digest.Digest, index int) *url.URL {
+func signatureStorageURL(base signatureStorageBase, manifestDigest digest.Digest, index int) (*url.URL, error) {
+	if err := manifestDigest.Validate(); err != nil { // digest.Digest.Hex() panics on failure, and could possibly result in a path with ../, so validate explicitly.
+		return nil, err
+	}
 	if base == nil {
-		return nil
+		return nil, nil
 	}
 	url := *base
 	url.Path = fmt.Sprintf("%s@%s=%s/signature-%d", url.Path, manifestDigest.Algorithm(), manifestDigest.Hex(), index+1)
-	return &url
+	return &url, nil
 }
