@@ -81,6 +81,18 @@ func makeFilename(blobSum digest.Digest, isConfig bool) string {
 	return blobSum.String()
 }
 
+// blobPath returns the path appropriate for storing a blob with digest.
+func (b *blobCacheReference) blobPath(digest digest.Digest, isConfig bool) (string, error) {
+	if err := digest.Validate(); err != nil { // Make sure digest.String() does not contain any unexpected characters
+		return "", err
+	}
+	baseName := digest.String()
+	if isConfig {
+		baseName += ".config"
+	}
+	return filepath.Join(b.directory, baseName), nil
+}
+
 // NewBlobCache creates a new blob cache that wraps an image reference.  Any blobs which are
 // written to the destination image created from the resulting reference will also be stored
 // as-is to the specified directory or a temporary directory.  The cache directory's contents
@@ -134,7 +146,10 @@ func (r *blobCacheReference) HasBlob(blobinfo types.BlobInfo) (bool, int64, erro
 	}
 
 	for _, isConfig := range []bool{false, true} {
-		filename := filepath.Join(r.directory, makeFilename(blobinfo.Digest, isConfig))
+		filename, err := r.blobPath(blobinfo.Digest, isConfig)
+		if err != nil {
+			return false, -1, err
+		}
 		fileInfo, err := os.Stat(filename)
 		if err == nil && (blobinfo.Size == -1 || blobinfo.Size == fileInfo.Size()) {
 			return true, fileInfo.Size(), nil
@@ -207,7 +222,10 @@ func (s *blobCacheSource) Close() error {
 
 func (s *blobCacheSource) GetManifest(ctx context.Context, instanceDigest *digest.Digest) ([]byte, string, error) {
 	if instanceDigest != nil {
-		filename := filepath.Join(s.reference.directory, makeFilename(*instanceDigest, false))
+		filename, err := s.reference.blobPath(*instanceDigest, false)
+		if err != nil {
+			return nil, "", err
+		}
 		manifestBytes, err := ioutil.ReadFile(filename)
 		if err == nil {
 			s.cacheHits++
@@ -287,7 +305,10 @@ func (s *blobCacheSource) LayerInfosForCopy(ctx context.Context, instanceDigest 
 		for _, info := range infos {
 			var replaceDigest []byte
 			var err error
-			blobFile := filepath.Join(s.reference.directory, makeFilename(info.Digest, false))
+			blobFile, err2 := s.reference.blobPath(info.Digest, false)
+			if err != nil {
+				return nil, err2
+			}
 			alternate := ""
 			switch s.reference.compress {
 			case types.Compress:
@@ -298,7 +319,10 @@ func (s *blobCacheSource) LayerInfosForCopy(ctx context.Context, instanceDigest 
 				replaceDigest, err = ioutil.ReadFile(alternate)
 			}
 			if err == nil && digest.Digest(replaceDigest).Validate() == nil {
-				alternate = filepath.Join(filepath.Dir(alternate), makeFilename(digest.Digest(replaceDigest), false))
+				alternate, err := s.reference.blobPath(digest.Digest(replaceDigest), false)
+				if err != nil {
+					return nil, err
+				}
 				fileInfo, err := os.Stat(alternate)
 				if err == nil {
 					logrus.Debugf("suggesting cached blob with digest %q and compression %v in place of blob with digest %q", string(replaceDigest), s.reference.compress, info.Digest.String())
@@ -371,6 +395,7 @@ func saveStream(wg *sync.WaitGroup, decompressReader io.ReadCloser, tempFile *os
 	defer wg.Done()
 	// Decompress from and digest the reading end of that pipe.
 	decompressed, err3 := archive.DecompressStream(decompressReader)
+
 	digester := digest.Canonical.Digester()
 	if err3 == nil {
 		// Read the decompressed data through the filter over the pipe, blocking until the
@@ -382,9 +407,13 @@ func saveStream(wg *sync.WaitGroup, decompressReader io.ReadCloser, tempFile *os
 			logrus.Debugf("error draining the pipe: %v", err)
 		}
 	}
+
 	decompressReader.Close()
 	decompressed.Close()
 	tempFile.Close()
+	if err := digester.Digest().Validate(); err != nil {
+		return
+	}
 	// Determine the name that we should give to the uncompressed copy of the blob.
 	decompressedFilename := filepath.Join(filepath.Dir(tempFile.Name()), makeFilename(digester.Digest(), isConfig))
 	if err3 == nil {
@@ -427,6 +456,10 @@ func (d *blobCacheDestination) PutBlob(ctx context.Context, stream io.Reader, in
 	compression := archive.Uncompressed
 	if inputInfo.Digest != "" {
 		filename := filepath.Join(d.reference.directory, makeFilename(inputInfo.Digest, isConfig))
+		filename, err2 := d.reference.blobPath(inputInfo.Digest, isConfig)
+		if err2 != nil {
+			return types.BlobInfo{}, err2
+		}
 		tempfile, err = ioutil.TempFile(d.reference.directory, makeFilename(inputInfo.Digest, isConfig))
 		if err == nil {
 			stream = io.TeeReader(stream, tempfile)
@@ -519,7 +552,10 @@ func (d *blobCacheDestination) PutManifest(ctx context.Context, manifestBytes []
 	if err != nil {
 		logrus.Warnf("error digesting manifest %q: %v", string(manifestBytes), err)
 	} else {
-		filename := filepath.Join(d.reference.directory, makeFilename(manifestDigest, false))
+		filename, err := d.reference.blobPath(manifestDigest, false)
+		if err != nil {
+			return err
+		}
 		if err = ioutils.AtomicWriteFile(filename, manifestBytes, 0600); err != nil {
 			logrus.Warnf("error saving manifest as %q: %v", filename, err)
 		}

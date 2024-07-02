@@ -137,7 +137,7 @@ func imageMatchesSystemContext(store storage.Store, img *storage.Image, manifest
 	}
 	// Double-check that we can read the runnable image's manifest from the
 	// image record.
-	key, err := manifestBigDataKey(instanceDigest)
+	key, err = manifestBigDataKey(instanceDigest)
 	if err != nil {
 		return false // This should never happen, manifestDigest comes from a reference.Digested, and that validates the format.
 	}

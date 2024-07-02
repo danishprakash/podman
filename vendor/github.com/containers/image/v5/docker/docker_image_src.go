@@ -343,7 +343,7 @@ func (s *dockerImageSource) getSignaturesFromLookaside(ctx context.Context, inst
 	for i := 0; ; i++ {
 		url, err := signatureStorageURL(s.c.signatureBase, manifestDigest, i)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if url == nil {
 			return nil, errors.Errorf("Internal error: signatureStorageURL with non-nil base returned nil")
