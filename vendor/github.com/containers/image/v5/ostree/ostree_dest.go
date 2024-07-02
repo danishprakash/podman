@@ -1,3 +1,4 @@
+//go:build containers_image_ostree
 // +build containers_image_ostree
 
 package ostree
@@ -350,6 +351,9 @@ func (d *ostreeImageDestination) TryReusingBlob(ctx context.Context, info types.
 		}
 		d.repo = repo
 	}
+	if err := info.Digest.Validate(); err != nil { // digest.Digest.Hex() panics on failure, so validate explicitly.
+		return false, types.BlobInfo{}, err
+	}
 	branch := fmt.Sprintf("ociimage/%s", info.Digest.Hex())
 
 	found, data, err := readMetadata(d.repo, branch, "docker.uncompressed_digest")
@@ -470,12 +474,18 @@ func (d *ostreeImageDestination) Commit(context.Context, types.UnparsedImage) er
 		return nil
 	}
 	for _, layer := range d.schema.LayersDescriptors {
+		if err := layer.Digest.Validate(); err != nil { // digest.Digest.Encoded() panics on failure, so validate explicitly.
+			return err
+		}
 		hash := layer.Digest.Hex()
 		if err = checkLayer(hash); err != nil {
 			return err
 		}
 	}
 	for _, layer := range d.schema.FSLayers {
+		if err := layer.BlobSum.Validate(); err != nil { // digest.Digest.Encoded() panics on failure, so validate explicitly.
+			return err
+		}
 		hash := layer.BlobSum.Hex()
 		if err = checkLayer(hash); err != nil {
 			return err

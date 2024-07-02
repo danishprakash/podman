@@ -963,9 +963,13 @@ func (c *copier) newProgressPool(ctx context.Context) (*mpb.Progress, func()) {
 
 // createProgressBar creates a mpb.Bar in pool.  Note that if the copier's reportWriter
 // is ioutil.Discard, the progress bar's output will be discarded
-func (c *copier) createProgressBar(pool *mpb.Progress, info types.BlobInfo, kind string, onComplete string) *mpb.Bar {
+func (c *copier) createProgressBar(pool *mpb.Progress, info types.BlobInfo, kind string, onComplete string) (*mpb.Bar, error) {
 	// shortDigestLen is the length of the digest used for blobs.
 	const shortDigestLen = 12
+
+	if err := info.Digest.Validate(); err != nil { // digest.Digest.Encoded() panics on failure, so validate explicitly.
+		return nil, err
+	}
 
 	prefix := fmt.Sprintf("Copying %s %s", kind, info.Digest.Encoded())
 	// Truncate the prefix (chopping of some part of the digest) to make all progress bars aligned in a column.
@@ -1003,7 +1007,7 @@ func (c *copier) createProgressBar(pool *mpb.Progress, info types.BlobInfo, kind
 	if c.progressOutput == ioutil.Discard {
 		c.Printf("Copying %s %s\n", kind, info.Digest)
 	}
-	return bar
+	return bar, nil
 }
 
 // copyConfig copies config.json, if any, from src to dest.
@@ -1018,7 +1022,10 @@ func (c *copier) copyConfig(ctx context.Context, src types.Image) error {
 		destInfo, err := func() (types.BlobInfo, error) { // A scope for defer
 			progressPool, progressCleanup := c.newProgressPool(ctx)
 			defer progressCleanup()
-			bar := c.createProgressBar(progressPool, srcInfo, "config", "done")
+			bar, err := c.createProgressBar(progressPool, srcInfo, "config", "done")
+			if err != nil {
+				return types.BlobInfo{}, err
+			}
 			destInfo, err := c.copyBlobFromStream(ctx, bytes.NewReader(configBlob), srcInfo, nil, false, true, false, bar)
 			if err != nil {
 				return types.BlobInfo{}, err
@@ -1058,7 +1065,10 @@ func (ic *imageCopier) copyLayer(ctx context.Context, srcInfo types.BlobInfo, to
 		}
 		if reused {
 			logrus.Debugf("Skipping blob %s (already present):", srcInfo.Digest)
-			bar := ic.c.createProgressBar(pool, srcInfo, "blob", "skipped: already exists")
+			bar, err := ic.c.createProgressBar(pool, srcInfo, "blob", "skipped: already exists")
+			if err != nil {
+				return types.BlobInfo{}, "", err
+			}
 			bar.SetTotal(0, true)
 
 			// Throw an event that the layer has been skipped
@@ -1079,7 +1089,10 @@ func (ic *imageCopier) copyLayer(ctx context.Context, srcInfo types.BlobInfo, to
 	}
 	defer srcStream.Close()
 
-	bar := ic.c.createProgressBar(pool, srcInfo, "blob", "done")
+	bar, err := ic.c.createProgressBar(pool, srcInfo, "blob", "done")
+	if err != nil {
+		return types.BlobInfo{}, "", err
+	}
 
 	blobInfo, diffIDChan, err := ic.copyLayerFromStream(ctx, srcStream, types.BlobInfo{Digest: srcInfo.Digest, Size: srcBlobSize, MediaType: srcInfo.MediaType, Annotations: srcInfo.Annotations}, diffIDIsNeeded, toEncrypt, bar)
 	if err != nil {

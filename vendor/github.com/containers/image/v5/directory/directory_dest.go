@@ -179,7 +179,10 @@ func (d *dirImageDestination) PutBlob(ctx context.Context, stream io.Reader, inp
 		}
 	}
 
-	blobPath := d.ref.layerPath(computedDigest)
+	blobPath, err := d.ref.layerPath(computedDigest)
+	if err != nil {
+		return types.BlobInfo{}, err
+	}
 	// need to explicitly close the file, since a rename won't otherwise not work on Windows
 	blobFile.Close()
 	explicitClosed = true
@@ -201,7 +204,10 @@ func (d *dirImageDestination) TryReusingBlob(ctx context.Context, info types.Blo
 	if info.Digest == "" {
 		return false, types.BlobInfo{}, errors.Errorf(`"Can not check for a blob with unknown digest`)
 	}
-	blobPath := d.ref.layerPath(info.Digest)
+	blobPath, err := d.ref.layerPath(info.Digest)
+	if err != nil {
+		return false, types.BlobInfo{}, err
+	}
 	finfo, err := os.Stat(blobPath)
 	if err != nil && os.IsNotExist(err) {
 		return false, types.BlobInfo{}, nil
@@ -222,7 +228,11 @@ func (d *dirImageDestination) TryReusingBlob(ctx context.Context, info types.Blo
 // If the destination is in principle available, refuses this manifest type (e.g. it does not recognize the schema),
 // but may accept a different manifest type, the returned error must be an ManifestTypeRejectedError.
 func (d *dirImageDestination) PutManifest(ctx context.Context, manifest []byte, instanceDigest *digest.Digest) error {
-	return ioutil.WriteFile(d.ref.manifestPath(instanceDigest), manifest, 0644)
+	path, err := d.ref.manifestPath(instanceDigest)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(path, manifest, 0644)
 }
 
 // PutSignatures writes a set of signatures to the destination.
@@ -230,7 +240,11 @@ func (d *dirImageDestination) PutManifest(ctx context.Context, manifest []byte, 
 // (when the primary manifest is a manifest list); this should always be nil if the primary manifest is not a manifest list.
 func (d *dirImageDestination) PutSignatures(ctx context.Context, signatures [][]byte, instanceDigest *digest.Digest) error {
 	for i, sig := range signatures {
-		if err := ioutil.WriteFile(d.ref.signaturePath(i, instanceDigest), sig, 0644); err != nil {
+		path, err := d.ref.signaturePath(i, instanceDigest)
+		if err != nil {
+			return err
+		}
+		if err := ioutil.WriteFile(path, sig, 0644); err != nil {
 			return err
 		}
 	}

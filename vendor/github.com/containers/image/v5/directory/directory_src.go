@@ -37,7 +37,11 @@ func (s *dirImageSource) Close() error {
 // If instanceDigest is not nil, it contains a digest of the specific manifest instance to retrieve (when the primary manifest is a manifest list);
 // this never happens if the primary manifest is not a manifest list (e.g. if the source never returns manifest lists).
 func (s *dirImageSource) GetManifest(ctx context.Context, instanceDigest *digest.Digest) ([]byte, string, error) {
-	m, err := ioutil.ReadFile(s.ref.manifestPath(instanceDigest))
+	path, err := s.ref.manifestPath(instanceDigest)
+	if err != nil {
+		return nil, "", err
+	}
+	m, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, "", err
 	}
@@ -53,7 +57,11 @@ func (s *dirImageSource) HasThreadSafeGetBlob() bool {
 // The Digest field in BlobInfo is guaranteed to be provided, Size may be -1 and MediaType may be optionally provided.
 // May update BlobInfoCache, preferably after it knows for certain that a blob truly exists at a specific location.
 func (s *dirImageSource) GetBlob(ctx context.Context, info types.BlobInfo, cache types.BlobInfoCache) (io.ReadCloser, int64, error) {
-	r, err := os.Open(s.ref.layerPath(info.Digest))
+	path, err := s.ref.layerPath(info.Digest)
+	if err != nil {
+		return nil, -1, err
+	}
+	r, err := os.Open(path)
 	if err != nil {
 		return nil, -1, err
 	}
@@ -71,7 +79,11 @@ func (s *dirImageSource) GetBlob(ctx context.Context, info types.BlobInfo, cache
 func (s *dirImageSource) GetSignatures(ctx context.Context, instanceDigest *digest.Digest) ([][]byte, error) {
 	signatures := [][]byte{}
 	for i := 0; ; i++ {
-		signature, err := ioutil.ReadFile(s.ref.signaturePath(i, instanceDigest))
+		path, err := s.ref.signaturePath(i, instanceDigest)
+		if err != nil {
+			return nil, err
+		}
+		signature, err := ioutil.ReadFile(path)
 		if err != nil {
 			if os.IsNotExist(err) {
 				break
