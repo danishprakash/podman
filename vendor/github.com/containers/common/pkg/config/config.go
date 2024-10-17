@@ -9,9 +9,11 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/containers/common/internal/attributedstring"
 	"github.com/containers/common/libnetwork/types"
 	"github.com/containers/common/pkg/capabilities"
+	"github.com/containers/storage/pkg/ioutils"
 	"github.com/containers/storage/pkg/unshare"
 	units "github.com/docker/go-units"
 	selinux "github.com/opencontainers/selinux/go-selinux"
@@ -1009,6 +1011,82 @@ func IsValidDeviceMode(mode string) bool {
 		legalDeviceMode[c] = false
 	}
 	return true
+}
+
+func rootlessConfigPath() (string, error) {
+	if configHome := os.Getenv("XDG_CONFIG_HOME"); configHome != "" {
+		return filepath.Join(configHome, _configPath), nil
+	}
+	home, err := unshare.HomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(home, UserOverrideContainersConfig), nil
+}
+
+func Path() string {
+	if path := os.Getenv("CONTAINERS_CONF"); path != "" {
+		return path
+	}
+	if unshare.IsRootless() {
+		if rpath, err := rootlessConfigPath(); err == nil {
+			return rpath
+		}
+		return "$HOME/" + UserOverrideContainersConfig
+	}
+	return OverrideContainersConfig
+}
+
+// ReadCustomConfig reads the custom config and only generates a config based on it
+// If the custom config file does not exists, function will return an empty config
+func ReadCustomConfig() (*Config, error) {
+	path, err := customConfigFile()
+	if err != nil {
+		return nil, err
+	}
+	newConfig := &Config{}
+	if _, err := os.Stat(path); err == nil {
+		if err := readConfigFromFile(path, newConfig); err != nil {
+			return nil, err
+		}
+	} else {
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
+	// Let's always initialize the farm list so it is never nil
+	if newConfig.Farms.List == nil {
+		newConfig.Farms.List = make(map[string][]string)
+	}
+	return newConfig, nil
+}
+
+// Write writes the configuration to the default file
+func (c *Config) Write() error {
+	var err error
+	path, err := customConfigFile()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+
+	opts := &ioutils.AtomicFileWriterOptions{ExplicitCommit: true}
+	configFile, err := ioutils.NewAtomicFileWriterWithOpts(path, 0o644, opts)
+	if err != nil {
+		return err
+	}
+	defer configFile.Close()
+
+	enc := toml.NewEncoder(configFile)
+	if err := enc.Encode(c); err != nil {
+		return err
+	}
+
+	// If no errors commit the changes to the config file
+	return configFile.Commit()
 }
 
 // Reload clean the cached config and reloads the configuration from containers.conf files
