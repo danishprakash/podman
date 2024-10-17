@@ -16,7 +16,6 @@ import (
 
 	"github.com/containers/common/libnetwork/types"
 	"github.com/containers/podman/v4/libpod/define"
-	"github.com/containers/podman/v4/pkg/rootless"
 	"github.com/containers/storage"
 	"github.com/sirupsen/logrus"
 
@@ -304,7 +303,7 @@ func (s *SQLiteState) ValidateDBConfig(runtime *Runtime) (defErr error) {
 		return define.ErrDBClosed
 	}
 
-	storeOpts, err := storage.DefaultStoreOptions(rootless.IsRootless(), rootless.GetRootlessUID())
+	storeOpts, err := storage.DefaultStoreOptions()
 	if err != nil {
 		return err
 	}

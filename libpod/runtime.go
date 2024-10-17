@@ -198,7 +198,7 @@ func newRuntimeFromConfig(conf *config.Config, options ...RuntimeOption) (*Runti
 		return nil, err
 	}
 
-	storeOpts, err := storage.DefaultStoreOptions(rootless.IsRootless(), rootless.GetRootlessUID())
+	storeOpts, err := storage.DefaultStoreOptions()
 	if err != nil {
 		return nil, err
 	}
@@ -1089,7 +1089,7 @@ func (r *Runtime) reloadContainersConf() error {
 
 // reloadStorageConf reloads the storage.conf
 func (r *Runtime) reloadStorageConf() error {
-	configFile, err := storage.DefaultConfigFile(rootless.IsRootless())
+	configFile, err := storage.DefaultConfigFile()
 	if err != nil {
 		return err
 	}

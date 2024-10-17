@@ -21,10 +21,10 @@ import (
 	"github.com/containers/common/libnetwork/types"
 	netUtil "github.com/containers/common/libnetwork/util"
 	"github.com/containers/common/pkg/netns"
-	"github.com/containers/common/pkg/util"
 	"github.com/containers/podman/v4/libpod/define"
 	"github.com/containers/podman/v4/pkg/rootless"
 	"github.com/containers/podman/v4/utils"
+	"github.com/containers/storage/pkg/homedir"
 	"github.com/containers/storage/pkg/lockfile"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/opencontainers/selinux/go-selinux/label"
@@ -82,7 +82,7 @@ func (r *RootlessNetNS) Do(toRun func() error) error {
 			return fmt.Errorf("cannot create a new mount namespace: %w", err)
 		}
 
-		xdgRuntimeDir, err := util.GetRuntimeDir()
+		xdgRuntimeDir, err := homedir.GetRuntimeDir()
 		if err != nil {
 			return fmt.Errorf("could not get runtime directory: %w", err)
 		}
