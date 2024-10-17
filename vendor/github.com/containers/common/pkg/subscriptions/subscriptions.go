@@ -10,7 +10,6 @@ import (
 
 	"github.com/containers/common/pkg/umask"
 	"github.com/containers/storage/pkg/idtools"
-	securejoin "github.com/cyphar/filepath-securejoin"
 	rspec "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/opencontainers/selinux/go-selinux/label"
 	"github.com/sirupsen/logrus"
@@ -213,7 +212,7 @@ func MountsWithUIDGID(mountLabel, containerRunDir, mountFile, mountPoint string,
 }
 
 func rchown(chowndir string, uid, gid int) error {
-	return filepath.Walk(chowndir, func(filePath string, f os.FileInfo, err error) error {
+	return filepath.Walk(chowndir, func(filePath string, _ os.FileInfo, err error) error {
 		return os.Lchown(filePath, uid, gid)
 	})
 }
@@ -232,7 +231,7 @@ func addSubscriptionsFromMountsFile(filePath, mountLabel, containerRunDir string
 		fileInfo, err := os.Stat(hostDirOrFile)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				logrus.Warnf("Path %q from %q doesn't exist, skipping", hostDirOrFile, filePath)
+				logrus.Infof("Path %q from %q doesn't exist, skipping", hostDirOrFile, filePath)
 				continue
 			}
 			return nil, err
@@ -346,10 +345,7 @@ func addFIPSModeSubscription(mounts *[]rspec.Mount, containerRunDir, mountPoint,
 
 	srcBackendDir := "/usr/share/crypto-policies/back-ends/FIPS"
 	destDir := "/etc/crypto-policies/back-ends"
-	srcOnHost, err := securejoin.SecureJoin(mountPoint, srcBackendDir)
-	if err != nil {
-		return fmt.Errorf("resolve %s in the container: %w", srcBackendDir, err)
-	}
+	srcOnHost := filepath.Join(mountPoint, srcBackendDir)
 	if _, err := os.Stat(srcOnHost); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
