@@ -1047,7 +1047,7 @@ func ReadCustomConfig() (*Config, error) {
 	}
 	newConfig := &Config{}
 	if _, err := os.Stat(path); err == nil {
-		if err := readConfigFromFile(path, newConfig); err != nil {
+		if err := readConfigFromFile(path, newConfig, true); err != nil {
 			return nil, err
 		}
 	} else {

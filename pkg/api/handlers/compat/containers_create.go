@@ -563,7 +563,7 @@ func cliOpts(cc handlers.CreateContainerConfig, rtc *config.Config) (*entities.C
 	}
 
 	if len(cc.HostConfig.RestartPolicy.Name) > 0 {
-		policy := cc.HostConfig.RestartPolicy.Name
+		policy := string(cc.HostConfig.RestartPolicy.Name)
 		// only add restart count on failure
 		if cc.HostConfig.RestartPolicy.IsOnFailure() {
 			policy += fmt.Sprintf(":%d", cc.HostConfig.RestartPolicy.MaximumRetryCount)

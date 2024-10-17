@@ -20,6 +20,7 @@ import (
 	docker "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/api/types/swarm"
+	dockerSystem "github.com/docker/docker/api/types/system"
 	"github.com/google/uuid"
 	"github.com/opencontainers/selinux/go-selinux"
 	log "github.com/sirupsen/logrus"
@@ -190,13 +191,12 @@ func getSecOpts(sysInfo *sysinfo.SysInfo) []string {
 	return secOpts
 }
 
-func getRuntimes(configInfo *config.Config) map[string]docker.Runtime {
-	runtimes := map[string]docker.Runtime{}
+func getRuntimes(configInfo *config.Config) map[string]dockerSystem.RuntimeWithStatus {
+	runtimes := map[string]dockerSystem.RuntimeWithStatus{}
 	for name, paths := range configInfo.Engine.OCIRuntimes {
-		runtimes[name] = docker.Runtime{
-			Path: paths[0],
-			Args: nil,
-		}
+		runtime := dockerSystem.RuntimeWithStatus{}
+		runtime.Runtime = dockerSystem.Runtime{Path: paths[0], Args: nil}
+		runtimes[name] = runtime
 	}
 	return runtimes
 }
