@@ -217,3 +217,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	tags.cncf.io/container-device-interface/specs-go v0.6.0 // indirect
 )
+
+// replaced with the HEAD commit of the suse-v0.7.5 branch at github.com/suse/go-retryablehttp
+replace github.com/hashicorp/go-retryablehttp v0.7.5 => github.com/suse/go-retryablehttp v0.0.0-20241209123412-5c0e967751af
