@@ -1,21 +1,18 @@
-//go:build linux
-
 package storage
 
 import (
 	"fmt"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 
 	drivers "github.com/containers/storage/drivers"
 	"github.com/containers/storage/pkg/idtools"
 	"github.com/containers/storage/pkg/unshare"
 	"github.com/containers/storage/types"
-	securejoin "github.com/cyphar/filepath-securejoin"
 	libcontainerUser "github.com/opencontainers/runc/libcontainer/user"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 )
 
 // getAdditionalSubIDs looks up the additional IDs configured for
@@ -88,59 +85,40 @@ const nobodyUser = 65534
 // parseMountedFiles returns the maximum UID and GID found in the /etc/passwd and
 // /etc/group files.
 func parseMountedFiles(containerMount, passwdFile, groupFile string) uint32 {
-	var (
-		passwd *os.File
-		group  *os.File
-		size   int
-		err    error
-	)
 	if passwdFile == "" {
-		passwd, err = secureOpen(containerMount, "/etc/passwd")
-	} else {
-		// User-specified override from a volume. Will not be in
-		// container root.
-		passwd, err = os.Open(passwdFile)
+		passwdFile = filepath.Join(containerMount, "etc/passwd")
 	}
-	if err == nil {
-		defer passwd.Close()
+	if groupFile == "" {
+		groupFile = filepath.Join(groupFile, "etc/group")
+	}
 
-		users, err := libcontainerUser.ParsePasswd(passwd)
-		if err == nil {
-			for _, u := range users {
-				// Skip the "nobody" user otherwise we end up with 65536
-				// ids with most images
-				if u.Name == "nobody" || u.Name == "nogroup" {
-					continue
-				}
-				if u.Uid > size && u.Uid != nobodyUser {
-					size = u.Uid + 1
-				}
-				if u.Gid > size && u.Gid != nobodyUser {
-					size = u.Gid + 1
-				}
+	size := 0
+
+	users, err := libcontainerUser.ParsePasswdFile(passwdFile)
+	if err == nil {
+		for _, u := range users {
+			// Skip the "nobody" user otherwise we end up with 65536
+			// ids with most images
+			if u.Name == "nobody" {
+				continue
+			}
+			if u.Uid > size && u.Uid != nobodyUser {
+				size = u.Uid
+			}
+			if u.Gid > size && u.Gid != nobodyUser {
+				size = u.Gid
 			}
 		}
 	}
 
-	if groupFile == "" {
-		group, err = secureOpen(containerMount, "/etc/group")
-	} else {
-		// User-specified override from a volume. Will not be in
-		// container root.
-		group, err = os.Open(groupFile)
-	}
+	groups, err := libcontainerUser.ParseGroupFile(groupFile)
 	if err == nil {
-		defer group.Close()
-
-		groups, err := libcontainerUser.ParseGroup(group)
-		if err == nil {
-			for _, g := range groups {
-				if g.Name == "nobody" || g.Name == "nogroup" {
-					continue
-				}
-				if g.Gid > size && g.Gid != nobodyUser {
-					size = g.Gid + 1
-				}
+		for _, g := range groups {
+			if g.Name == "nobody" {
+				continue
+			}
+			if g.Gid > size && g.Gid != nobodyUser {
+				size = g.Gid
 			}
 		}
 	}
@@ -330,15 +308,4 @@ func getAutoUserNSIDMappings(
 	uidMap := append(availableUIDs.zip(requestedContainerUIDs), additionalUIDMappings...)
 	gidMap := append(availableGIDs.zip(requestedContainerGIDs), additionalGIDMappings...)
 	return uidMap, gidMap, nil
-}
-
-// Securely open (read-only) a file in a container mount.
-func secureOpen(containerMount, file string) (*os.File, error) {
-	tmpFile, err := securejoin.OpenInRoot(containerMount, file)
-	if err != nil {
-		return nil, err
-	}
-	defer tmpFile.Close()
-
-	return securejoin.Reopen(tmpFile, unix.O_RDONLY)
 }
